@@ -95,7 +95,7 @@ export async function POST(req: NextRequest) {
       ffmpeg(inputPath)
         .outputOptions(["-c copy", "-map 0", "-f segment", "-segment_time 8"])
         .output(segmentPattern)
-        .on("end", resolve)
+        .on("end", () => resolve)
         .on("error", reject)
         .run();
     });
