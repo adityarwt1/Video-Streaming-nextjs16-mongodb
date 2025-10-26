@@ -15,12 +15,12 @@ export default function UploadPage() {
     formData.append("video", file);
 
     try {
-      const token = localStorage.getItem("token");
-      if (!token) {
-        setMessage("You must be logged in!");
-        setLoading(false);
-        return;
-      }
+      // const token = localStorage.getItem("token");
+      // if (!token) {
+      //   setMessage("You must be logged in!");
+      //   setLoading(false);
+      //   return;
+      // }
 
       const res = await fetch("/api/v1/upload", {
         method: "POST",
