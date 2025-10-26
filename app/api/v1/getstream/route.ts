@@ -4,7 +4,6 @@ import ffmpeg from "fluent-ffmpeg";
 import fs from "fs";
 import path from "path";
 import { tmpdir } from "os";
-import { Readable, PassThrough } from "stream";
 
 export async function GET(req: NextRequest) {
   const client = new MongoClient(process.env.MONGODB_URI as string);
@@ -20,54 +19,116 @@ export async function GET(req: NextRequest) {
 
     await client.connect();
     const db = client.db("videos");
+    const filesCollection = db.collection("videoSegments.files");
     const chunksCollection = db.collection("videoSegments.chunks");
 
-    // Create temporary directory
-    const tempDir = path.join(tmpdir(), `video-${videoId}-${Date.now()}`);
-    fs.mkdirSync(tempDir, { recursive: true });
+    // First, find the file to get its metadata.videoId
+    const file = await filesCollection.findOne({ _id: new ObjectId(videoId) });
 
-    // Fetch all chunks for this files_id
-    let n = 0;
-    const segmentPath = path.join(tempDir, "segment.mp4");
-    const writeStream = fs.createWriteStream(segmentPath);
-
-    console.log(`Fetching chunks for files_id: ${videoId}`);
-
-    while (true) {
-      const chunk = await chunksCollection.findOne({
-        files_id: new ObjectId(videoId),
-        n,
-      });
-
-      if (!chunk) {
-        console.log(`No more chunks found. Total chunks: ${n}`);
-        break;
-      }
-
-      // Write chunk data to file
-      const buffer = Buffer.from(chunk.data.buffer);
-      writeStream.write(buffer);
-      console.log(`Wrote chunk ${n}, size: ${buffer.length} bytes`);
-      n++;
-    }
-
-    if (n === 0) {
+    if (!file) {
       await client.close();
-      fs.rmSync(tempDir, { recursive: true, force: true });
       return NextResponse.json(
-        { error: `No segments found for videoId: ${videoId}` },
+        { error: `File not found for id: ${videoId}` },
         { status: 404 }
       );
     }
 
-    // Close write stream
-    await new Promise((resolve, reject) => {
-      writeStream.end();
-      writeStream.on("finish", resolve);
-      writeStream.on("error", reject);
-    });
+    console.log(
+      `Found file: ${file.filename}, videoId: ${file.metadata?.videoId}, order: ${file.metadata?.order}`
+    );
 
-    console.log(`Segment file created: ${segmentPath}`);
+    // Now find ALL segments with the same metadata.videoId
+    const allSegmentFiles = await filesCollection
+      .find({ "metadata.videoId": file.metadata.videoId })
+      .sort({ "metadata.order": 1 })
+      .toArray();
+
+    console.log(
+      `Found ${allSegmentFiles.length} total segments for videoId: ${file.metadata.videoId}`
+    );
+
+    // Create temporary directory
+    const tempDir = path.join(
+      tmpdir(),
+      `video-${file.metadata.videoId}-${Date.now()}`
+    );
+    fs.mkdirSync(tempDir, { recursive: true });
+
+    const segmentPaths: string[] = [];
+
+    // Process each segment file
+    for (const segmentFile of allSegmentFiles) {
+      const segmentPath = path.join(tempDir, segmentFile.filename);
+      const writeStream = fs.createWriteStream(segmentPath);
+
+      console.log(
+        `\nProcessing segment: ${segmentFile.filename} (order: ${segmentFile.metadata.order}, _id: ${segmentFile._id})`
+      );
+
+      // Fetch all chunks for this files_id
+      let n = 0;
+      let totalBytes = 0;
+
+      while (true) {
+        const chunk = await chunksCollection.findOne({
+          files_id: segmentFile._id,
+          n,
+        });
+
+        if (!chunk) {
+          console.log(`  ✓ Finished: ${n} chunks, ${totalBytes} bytes total`);
+          break;
+        }
+
+        const buffer = Buffer.from(chunk.data.buffer);
+        writeStream.write(buffer);
+        totalBytes += buffer.length;
+        console.log(`  - Chunk ${n}: ${buffer.length} bytes`);
+        n++;
+      }
+
+      // Close write stream
+      await new Promise((resolve, reject) => {
+        writeStream.end();
+        writeStream.on("finish", resolve);
+        writeStream.on("error", reject);
+      });
+
+      segmentPaths.push(segmentPath);
+    }
+
+    if (segmentPaths.length === 0) {
+      await client.close();
+      fs.rmSync(tempDir, { recursive: true, force: true });
+      return NextResponse.json({ error: `No segments found` }, { status: 404 });
+    }
+
+    console.log(
+      `\n✓ Created ${segmentPaths.length} segment files in ${tempDir}`
+    );
+
+    // Create concat file for ffmpeg (only needed if multiple segments)
+    let inputSource: string;
+    let inputOptions: string[] = [];
+
+    if (segmentPaths.length === 1) {
+      // Single segment - no concat needed
+      inputSource = segmentPaths[0];
+      console.log("Single segment - streaming directly");
+    } else {
+      // Multiple segments - use concat
+      const concatFilePath = path.join(tempDir, "concat.txt");
+      const concatContent = segmentPaths
+        .map((p) => `file '${p.replace(/\\/g, "/").replace(/'/g, "'\\''")}'`)
+        .join("\n");
+      fs.writeFileSync(concatFilePath, concatContent);
+
+      inputSource = concatFilePath;
+      inputOptions = ["-f", "concat", "-safe", "0"];
+
+      console.log("Multiple segments - using FFmpeg concat");
+      console.log("Concat file:\n", concatContent);
+    }
 
     // Cleanup function
     const cleanup = () => {
@@ -83,11 +144,13 @@ export async function GET(req: NextRequest) {
 
     let ffmpegProcess: any;
 
-    // Stream the video using FFmpeg for proper formatting
+    // Stream the video
     const videoStream = new ReadableStream({
       start(controller) {
         try {
-          ffmpegProcess = ffmpeg(segmentPath)
+          ffmpegProcess = ffmpeg()
+            .input(inputSource)
+            .inputOptions(inputOptions)
             .outputOptions([
               "-c",
               "copy",
