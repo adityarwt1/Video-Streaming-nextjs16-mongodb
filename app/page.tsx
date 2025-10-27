@@ -30,7 +30,38 @@ const page = () => {
         </div>
       </div>
       {/**this is the left div */}
-      <div className="w-full">asdfsdf</div>
+      <div className="w-full flex justify-center items-center flex-col relative">
+        <div className="  absolute top-30 left-80 ">
+          <video
+            src="/sample.mp4"
+            loop
+            autoPlay
+            muted
+            playsInline
+            width={400}
+          />
+        </div>
+        <div className="absolute top-120 left-20">
+          <video
+            src="/sample3.mp4"
+            loop
+            autoPlay
+            muted
+            playsInline
+            width={400}
+          />
+        </div>
+        <div className="absolute top-70 right-50 ">
+          <video
+            src="/sample2.mp4"
+            loop
+            autoPlay
+            muted
+            playsInline
+            width={400}
+          />
+        </div>
+      </div>
     </div>
   );
 };

@@ -19,7 +19,9 @@
 
 # production
 /build
-
+/public/sample.mp4
+/public/sample2.mp4
+/public/sample3.mp4
 # misc
 .DS_Store
 *.pem
