@@ -90,7 +90,7 @@ export async function GET(req: NextRequest) {
       // Close write stream
       await new Promise((resolve, reject) => {
         writeStream.end();
-        writeStream.on("finish", () => resolve);
+        writeStream.on("finish", resolve);
         writeStream.on("error", reject);
       });
 
