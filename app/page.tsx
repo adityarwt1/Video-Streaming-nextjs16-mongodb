@@ -1,23 +1,38 @@
-"use client";
+import Link from "next/link";
+import React from "react";
 
-export default function Hero() {
+const page = () => {
   return (
-    <section className="flex flex-col items-center justify-center text-center py-20 bg-black text-white">
-      <h1 className="text-5xl font-bold mb-4">
-        Stream, Upload, and Share Your World
-      </h1>
-      <p className="text-lg text-gray-400 max-w-xl mb-8">
-        Experience seamless video streaming powered by fast uploads, smooth
-        playback, and real-time updates — all in one place.
-      </p>
-      <div className="flex gap-4">
-        <button className="px-6 py-3 rounded-full bg-white text-black font-semibold hover:bg-gray-200">
-          Get Start
-        </button>
-        <button className="px-6 py-3 rounded-full border border-white hover:bg-white hover:text-black">
-          Explore
-        </button>
+    <div className="bg-[#000000] h-screen w-full flex flex-row">
+      {/**This is right div */}
+      <div className="w-full flex justify-center items-center flex-col ">
+        <div className="text-4xl font-bold transform-3d">
+          Stream, Upload, and Share Your World!
+        </div>
+        <div className="text-left mx-11 opacity-50">
+          Experience seamless video streaming powered by fast uploads, smooth
+          playback, and real-time updates — all in one place.
+        </div>
+        {/**button */}
+        <div className="flex w-full justify-left mt-5 ml-16">
+          <Link
+            href="/signin"
+            className="px-8 py-2 rounded-full bg-[#EDEDED] text-black mx-2 hover:opacity-50 transition-all duration-300"
+          >
+            Get Start
+          </Link>
+          <Link
+            href="/explore"
+            className="px-8 py-2 rounded-full border-b border-b-[#EDEDED] text-white mx-2  hover:opacity-50 transition-all duration-300"
+          >
+            Explore
+          </Link>
+        </div>
       </div>
-    </section>
+      {/**this is the left div */}
+      <div className="w-full">asdfsdf</div>
+    </div>
   );
-}
+};
+
+export default page;
