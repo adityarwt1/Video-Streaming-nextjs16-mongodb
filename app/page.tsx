@@ -39,19 +39,10 @@ const page = () => {
             muted
             playsInline
             width={400}
+            className="blur-xs hover:blur-none transition-all duration-300 "
           />
         </div>
         <div className="absolute top-120 left-20">
-          <video
-            src="/sample3.mp4"
-            loop
-            autoPlay
-            muted
-            playsInline
-            width={400}
-          />
-        </div>
-        <div className="absolute top-70 right-50 ">
           <video
             src="/sample2.mp4"
             loop
@@ -59,7 +50,26 @@ const page = () => {
             muted
             playsInline
             width={400}
+            className="blur-xs hover:blur-none transition-all duration-300 "
           />
+        </div>
+        <div className="absolute top-70 right-50 ">
+          <div className="relative w-[400px]">
+            <video
+              src="/sample3.mp4"
+              loop
+              autoPlay
+              muted
+              playsInline
+              width={400}
+              className="rounded-xl"
+            />
+
+            {/* Time Overlay */}
+            {/* <div className="absolute top-0 left-0 bg-[rgba(0,0,0,0.5)]  text-white  px-2 py-1 rounded text-xl w-full">
+              🔴 Valorant Live
+            </div> */}
+          </div>
         </div>
       </div>
     </div>
