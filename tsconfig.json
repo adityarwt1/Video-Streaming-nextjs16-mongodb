@@ -37,7 +37,7 @@
     "**/*.mts",
     ".next\\dev/types/**/*.ts",
     ".next\\dev/types/**/*.ts"
-  ],
+, "app/api/v1/getstream2/route.js", "app/api/v1/upload/route.js"  ],
   "exclude": [
     "node_modules"
   ]

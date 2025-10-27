@@ -1,228 +1,234 @@
-import { NextRequest, NextResponse } from "next/server";
-import { MongoClient, ObjectId } from "mongodb";
-import ffmpeg from "fluent-ffmpeg";
-import fs from "fs";
-import path from "path";
-import { tmpdir } from "os";
+// import { NextRequest, NextResponse } from "next/server";
+// import { MongoClient, ObjectId } from "mongodb";
+// import ffmpeg from "fluent-ffmpeg";
+// import fs from "fs";
+// import path from "path";
+// import { tmpdir } from "os";
 
-export async function GET(req: NextRequest) {
-  const client = new MongoClient(process.env.MONGODB_URI as string);
+import { NextResponse } from "next/server";
 
-  try {
-    const videoId = req.nextUrl.searchParams.get("id");
-    if (!videoId) {
-      return NextResponse.json(
-        { error: "Video id must be provided in the params" },
-        { status: 400 }
-      );
-    }
+// export async function GET(req: NextRequest) {
+//   const client = new MongoClient(process.env.MONGODB_URI as string);
 
-    await client.connect();
-    const db = client.db("videos");
-    const filesCollection = db.collection("videoSegments.files");
-    const chunksCollection = db.collection("videoSegments.chunks");
+//   try {
+//     const videoId = req.nextUrl.searchParams.get("id");
+//     if (!videoId) {
+//       return NextResponse.json(
+//         { error: "Video id must be provided in the params" },
+//         { status: 400 }
+//       );
+//     }
 
-    // First, find the file to get its metadata.videoId
-    const file = await filesCollection.findOne({ _id: new ObjectId(videoId) });
+//     await client.connect();
+//     const db = client.db("videos");
+//     const filesCollection = db.collection("videoSegments.files");
+//     const chunksCollection = db.collection("videoSegments.chunks");
 
-    if (!file) {
-      await client.close();
-      return NextResponse.json(
-        { error: `File not found for id: ${videoId}` },
-        { status: 404 }
-      );
-    }
+//     // First, find the file to get its metadata.videoId
+//     const file = await filesCollection.findOne({ _id: new ObjectId(videoId) });
 
-    console.log(
-      `Found file: ${file.filename}, videoId: ${file.metadata?.videoId}, order: ${file.metadata?.order}`
-    );
+//     if (!file) {
+//       await client.close();
+//       return NextResponse.json(
+//         { error: `File not found for id: ${videoId}` },
+//         { status: 404 }
+//       );
+//     }
 
-    // Now find ALL segments with the same metadata.videoId
-    const allSegmentFiles = await filesCollection
-      .find({ "metadata.videoId": file.metadata.videoId })
-      .sort({ "metadata.order": 1 })
-      .toArray();
+//     console.log(
+//       `Found file: ${file.filename}, videoId: ${file.metadata?.videoId}, order: ${file.metadata?.order}`
+//     );
 
-    console.log(
-      `Found ${allSegmentFiles.length} total segments for videoId: ${file.metadata.videoId}`
-    );
+//     // Now find ALL segments with the same metadata.videoId
+//     const allSegmentFiles = await filesCollection
+//       .find({ "metadata.videoId": file.metadata.videoId })
+//       .sort({ "metadata.order": 1 })
+//       .toArray();
 
-    // Create temporary directory
-    const tempDir = path.join(
-      tmpdir(),
-      `video-${file.metadata.videoId}-${Date.now()}`
-    );
-    fs.mkdirSync(tempDir, { recursive: true });
+//     console.log(
+//       `Found ${allSegmentFiles.length} total segments for videoId: ${file.metadata.videoId}`
+//     );
 
-    const segmentPaths: string[] = [];
+//     // Create temporary directory
+//     const tempDir = path.join(
+//       tmpdir(),
+//       `video-${file.metadata.videoId}-${Date.now()}`
+//     );
+//     fs.mkdirSync(tempDir, { recursive: true });
 
-    // Process each segment file
-    for (const segmentFile of allSegmentFiles) {
-      const segmentPath = path.join(tempDir, segmentFile.filename);
-      const writeStream = fs.createWriteStream(segmentPath);
+//     const segmentPaths: string[] = [];
 
-      console.log(
-        `\nProcessing segment: ${segmentFile.filename} (order: ${segmentFile.metadata.order}, _id: ${segmentFile._id})`
-      );
+//     // Process each segment file
+//     for (const segmentFile of allSegmentFiles) {
+//       const segmentPath = path.join(tempDir, segmentFile.filename);
+//       const writeStream = fs.createWriteStream(segmentPath);
 
-      // Fetch all chunks for this files_id
-      let n = 0;
-      let totalBytes = 0;
+//       console.log(
+//         `\nProcessing segment: ${segmentFile.filename} (order: ${segmentFile.metadata.order}, _id: ${segmentFile._id})`
+//       );
 
-      while (true) {
-        const chunk = await chunksCollection.findOne({
-          files_id: segmentFile._id,
-          n,
-        });
+//       // Fetch all chunks for this files_id
+//       let n = 0;
+//       let totalBytes = 0;
 
-        if (!chunk) {
-          console.log(`  ✓ Finished: ${n} chunks, ${totalBytes} bytes total`);
-          break;
-        }
+//       while (true) {
+//         const chunk = await chunksCollection.findOne({
+//           files_id: segmentFile._id,
+//           n,
+//         });
 
-        const buffer = Buffer.from(chunk.data.buffer);
-        writeStream.write(buffer);
-        totalBytes += buffer.length;
-        console.log(`  - Chunk ${n}: ${buffer.length} bytes`);
-        n++;
-      }
+//         if (!chunk) {
+//           console.log(`  ✓ Finished: ${n} chunks, ${totalBytes} bytes total`);
+//           break;
+//         }
 
-      // Close write stream
-      await new Promise((resolve, reject) => {
-        writeStream.end();
-        writeStream.on("finish", resolve);
-        writeStream.on("error", reject);
-      });
+//         const buffer = Buffer.from(chunk.data.buffer);
+//         writeStream.write(buffer);
+//         totalBytes += buffer.length;
+//         console.log(`  - Chunk ${n}: ${buffer.length} bytes`);
+//         n++;
+//       }
 
-      segmentPaths.push(segmentPath);
-    }
+//       // Close write stream
+//       await new Promise((resolve, reject) => {
+//         writeStream.end();
+//         writeStream.on("finish", resolve);
+//         writeStream.on("error", reject);
+//       });
 
-    if (segmentPaths.length === 0) {
-      await client.close();
-      fs.rmSync(tempDir, { recursive: true, force: true });
-      return NextResponse.json({ error: `No segments found` }, { status: 404 });
-    }
+//       segmentPaths.push(segmentPath);
+//     }
 
-    console.log(
-      `\n✓ Created ${segmentPaths.length} segment files in ${tempDir}`
-    );
+//     if (segmentPaths.length === 0) {
+//       await client.close();
+//       fs.rmSync(tempDir, { recursive: true, force: true });
+//       return NextResponse.json({ error: `No segments found` }, { status: 404 });
+//     }
 
-    // Create concat file for ffmpeg (only needed if multiple segments)
-    let inputSource: string;
-    let inputOptions: string[] = [];
+//     console.log(
+//       `\n✓ Created ${segmentPaths.length} segment files in ${tempDir}`
+//     );
 
-    if (segmentPaths.length === 1) {
-      // Single segment - no concat needed
-      inputSource = segmentPaths[0];
-      console.log("Single segment - streaming directly");
-    } else {
-      // Multiple segments - use concat
-      const concatFilePath = path.join(tempDir, "concat.txt");
-      const concatContent = segmentPaths
-        .map((p) => `file '${p.replace(/\\/g, "/").replace(/'/g, "'\\''")}'`)
-        .join("\n");
-      fs.writeFileSync(concatFilePath, concatContent);
+//     // Create concat file for ffmpeg (only needed if multiple segments)
+//     let inputSource: string;
+//     let inputOptions: string[] = [];
 
-      inputSource = concatFilePath;
-      inputOptions = ["-f", "concat", "-safe", "0"];
+//     if (segmentPaths.length === 1) {
+//       // Single segment - no concat needed
+//       inputSource = segmentPaths[0];
+//       console.log("Single segment - streaming directly");
+//     } else {
+//       // Multiple segments - use concat
+//       const concatFilePath = path.join(tempDir, "concat.txt");
+//       const concatContent = segmentPaths
+//         .map((p) => `file '${p.replace(/\\/g, "/").replace(/'/g, "'\\''")}'`)
+//         .join("\n");
+//       fs.writeFileSync(concatFilePath, concatContent);
 
-      console.log("Multiple segments - using FFmpeg concat");
-      console.log("Concat file:\n", concatContent);
-    }
+//       inputSource = concatFilePath;
+//       inputOptions = ["-f", "concat", "-safe", "0"];
 
-    // Cleanup function
-    const cleanup = () => {
-      try {
-        if (fs.existsSync(tempDir)) {
-          fs.rmSync(tempDir, { recursive: true, force: true });
-        }
-        console.log("Cleanup completed");
-      } catch (err) {
-        console.error("Cleanup error:", err);
-      }
-    };
+//       console.log("Multiple segments - using FFmpeg concat");
+//       console.log("Concat file:\n", concatContent);
+//     }
 
-    let ffmpegProcess: any;
+//     // Cleanup function
+//     const cleanup = () => {
+//       try {
+//         if (fs.existsSync(tempDir)) {
+//           fs.rmSync(tempDir, { recursive: true, force: true });
+//         }
+//         console.log("Cleanup completed");
+//       } catch (err) {
+//         console.error("Cleanup error:", err);
+//       }
+//     };
 
-    // Stream the video
-    const videoStream = new ReadableStream({
-      start(controller) {
-        try {
-          ffmpegProcess = ffmpeg()
-            .input(inputSource)
-            .inputOptions(inputOptions)
-            .outputOptions([
-              "-c",
-              "copy",
-              "-movflags",
-              "frag_keyframe+empty_moov+default_base_moof",
-              "-f",
-              "mp4",
-            ])
-            .on("start", (cmd) => {
-              console.log("FFmpeg command:", cmd);
-            })
-            .on("error", (err) => {
-              console.error("FFmpeg error:", err);
-              controller.error(err);
-              cleanup();
-            })
-            .on("end", () => {
-              console.log("FFmpeg processing completed");
-              controller.close();
-              cleanup();
-            });
+//     let ffmpegProcess: any;
 
-          const ffmpegStream = ffmpegProcess.pipe();
+//     // Stream the video
+//     const videoStream = new ReadableStream({
+//       start(controller) {
+//         try {
+//           ffmpegProcess = ffmpeg()
+//             .input(inputSource)
+//             .inputOptions(inputOptions)
+//             .outputOptions([
+//               "-c",
+//               "copy",
+//               "-movflags",
+//               "frag_keyframe+empty_moov+default_base_moof",
+//               "-f",
+//               "mp4",
+//             ])
+//             .on("start", (cmd) => {
+//               console.log("FFmpeg command:", cmd);
+//             })
+//             .on("error", (err) => {
+//               console.error("FFmpeg error:", err);
+//               controller.error(err);
+//               cleanup();
+//             })
+//             .on("end", () => {
+//               console.log("FFmpeg processing completed");
+//               controller.close();
+//               cleanup();
+//             });
 
-          ffmpegStream.on("data", (chunk: Buffer) => {
-            controller.enqueue(new Uint8Array(chunk));
-          });
+//           const ffmpegStream = ffmpegProcess.pipe();
 
-          ffmpegStream.on("end", () => {
-            controller.close();
-            cleanup();
-          });
+//           ffmpegStream.on("data", (chunk: Buffer) => {
+//             controller.enqueue(new Uint8Array(chunk));
+//           });
 
-          ffmpegStream.on("error", (err: Error) => {
-            console.error("Stream error:", err);
-            controller.error(err);
-            cleanup();
-          });
-        } catch (err) {
-          console.error("Start error:", err);
-          controller.error(err);
-          cleanup();
-        }
-      },
-      cancel() {
-        console.log("Stream cancelled by client");
-        if (ffmpegProcess) {
-          ffmpegProcess.kill("SIGKILL");
-        }
-        cleanup();
-      },
-    });
+//           ffmpegStream.on("end", () => {
+//             controller.close();
+//             cleanup();
+//           });
 
-    // Close MongoDB connection
-    setTimeout(() => {
-      client.close().catch(console.error);
-    }, 1000);
+//           ffmpegStream.on("error", (err: Error) => {
+//             console.error("Stream error:", err);
+//             controller.error(err);
+//             cleanup();
+//           });
+//         } catch (err) {
+//           console.error("Start error:", err);
+//           controller.error(err);
+//           cleanup();
+//         }
+//       },
+//       cancel() {
+//         console.log("Stream cancelled by client");
+//         if (ffmpegProcess) {
+//           ffmpegProcess.kill("SIGKILL");
+//         }
+//         cleanup();
+//       },
+//     });
 
-    return new Response(videoStream, {
-      headers: {
-        "Content-Type": "video/mp4",
-        "Cache-Control": "no-cache",
-        "Transfer-Encoding": "chunked",
-        "Access-Control-Allow-Origin": "*",
-      },
-    });
-  } catch (error) {
-    console.error("API error:", error);
-    await client.close();
-    return NextResponse.json(
-      { error: (error as Error).message },
-      { status: 500 }
-    );
-  }
+//     // Close MongoDB connection
+//     setTimeout(() => {
+//       client.close().catch(console.error);
+//     }, 1000);
+
+//     return new Response(videoStream, {
+//       headers: {
+//         "Content-Type": "video/mp4",
+//         "Cache-Control": "no-cache",
+//         "Transfer-Encoding": "chunked",
+//         "Access-Control-Allow-Origin": "*",
+//       },
+//     });
+//   } catch (error) {
+//     console.error("API error:", error);
+//     await client.close();
+//     return NextResponse.json(
+//       { error: (error as Error).message },
+//       { status: 500 }
+//     );
+//   }
+// }
+
+export async function POST() {
+  return NextResponse.json({ message: "This is done" }, { status: 200 });
 }
